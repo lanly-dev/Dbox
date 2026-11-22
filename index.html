@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dbox — a 3D box for rigged models</title>
+<style>
+  :root { --panel: rgba(16,14,12,.82); --ink: #f3ead9; --dim: #b8ab90; --acc: #e8a33d; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0a09; overflow: hidden;
+    font-family: ui-rounded, "Segoe UI", system-ui, sans-serif; color: var(--ink); }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #view:active { cursor: grabbing; }
+  #brand { position: fixed; top: 14px; left: 16px; pointer-events: none; text-shadow: 0 1px 8px #000; }
+  #brand h1 { margin: 0; font-size: 22px; letter-spacing: .35em; font-weight: 800; }
+  #brand p { margin: 2px 0 0; font-size: 12px; color: var(--dim); letter-spacing: .08em; }
+  #plaque { position: fixed; left: 16px; bottom: 14px; pointer-events: none; text-shadow: 0 1px 8px #000; }
+  #plaque b { font-size: 15px; } #plaque span { display: block; font-size: 12px; color: var(--dim); }
+  #panel { position: fixed; top: 12px; right: 12px; width: 248px; max-height: calc(100% - 24px);
+    overflow-y: auto; background: var(--panel); border: 1px solid rgba(232,163,61,.25);
+    border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px); font-size: 12.5px; }
+  #panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .18em; color: var(--acc);
+    margin: 12px 0 6px; } #panel h2:first-child { margin-top: 0; }
+  #panel label { display: block; margin: 6px 0 2px; color: var(--dim); }
+  #panel select, #panel input[type=file], #panel button { width: 100%; margin: 3px 0; }
+  #panel select, #panel button { background: #262019; color: var(--ink); border: 1px solid #4a3d28;
+    border-radius: 7px; padding: 5px 7px; font: inherit; }
+  #panel button { cursor: pointer; } #panel button:hover { border-color: var(--acc); }
+  #panel input[type=range] { width: 100%; accent-color: var(--acc); }
+  #panel input[type=color] { width: 100%; height: 26px; border: none; background: none; padding: 0; }
+  .row { display: flex; gap: 6px; } .row > * { flex: 1; }
+  .chk { display: flex; align-items: center; gap: 6px; color: var(--dim); margin: 5px 0; }
+  .chk input { accent-color: var(--acc); }
+  #status { color: var(--dim); font-size: 11.5px; line-height: 1.5; margin-top: 8px; word-break: break-word; }
+  #err { position: fixed; left: 16px; top: 84px; max-width: 46ch; color: #ff9c8a; font-size: 12.5px;
+    text-shadow: 0 1px 6px #000; white-space: pre-wrap; }
+  #drop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.55);
+    font-size: 20px; letter-spacing: .1em; pointer-events: none; z-index: 5; }
+  @media (max-width: 640px) { #panel { width: 208px; } #brand h1 { font-size: 17px; } }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="brand"><h1>DBOX</h1><p>a box, in 3D · backdrop editable · drop a .glb anywhere</p></div>
+<div id="plaque"><b id="plaqueTitle"></b><span id="plaqueCredit"></span></div>
+<div id="err"></div>
+<div id="drop">drop to load</div>
+<aside id="panel">
+  <h2>Model</h2>
+  <input type="file" id="modelFile" accept=".glb,model/gltf-binary">
+  <div id="status">loading…</div>
+  <h2>Animation</h2>
+  <select id="clipSel"><option value="-1">— no clip —</option></select>
+  <div class="row"><button id="playBtn">⏸ Pause</button><button id="poseReset">Reset pose</button></div>
+  <label>Clip time</label><input type="range" id="clipTime" min="0" max="1" step="0.001" value="0">
+  <h2>Pose — bone</h2>
+  <select id="boneSel"></select>
+  <label>Rotate X</label><input type="range" class="poseAxis" data-axis="0" min="-180" max="180" step="1" value="0">
+  <label>Rotate Y</label><input type="range" class="poseAxis" data-axis="1" min="-180" max="180" step="1" value="0">
+  <label>Rotate Z</label><input type="range" class="poseAxis" data-axis="2" min="-180" max="180" step="1" value="0">
+  <h2>Backdrop</h2>
+  <select id="bdSel">
+    <option value="skullwall">Skull wall (from the art)</option>
+    <option value="sourceart">Source art — full slide</option>
+    <option value="sunset">Warm sunset</option>
+    <option value="color">Solid color</option>
+  </select>
+  <input type="file" id="bdFile" accept="image/*">
+  <label>Backdrop color</label><input type="color" id="bdColor" value="#3a2c1c">
+  <label>Brightness</label><input type="range" id="bdBright" min="0.15" max="1.6" step="0.01" value="1">
+  <label class="chk"><input type="checkbox" id="bdWrap"> Wrap backdrop onto side walls</label>
+  <h2>Box</h2>
+  <label>Width</label><input type="range" id="boxW" min="1.2" max="5" step="0.05" value="2.6">
+  <label>Height</label><input type="range" id="boxH" min="1.2" max="5" step="0.05" value="2.6">
+  <label>Depth</label><input type="range" id="boxD" min="0.8" max="4" step="0.05" value="1.6">
+  <label class="chk"><input type="checkbox" id="spin" checked> Turntable spin</label>
+  <div class="row"><button id="snapBtn">📷 Snapshot</button><button id="camBtn">Reset camera</button></div>
+</aside>
+
+<script>
+'use strict';
+/* ================= config ================= */
+const CONFIG = {
+  title: 'Training Mannequin',
+  credit: 'sample rigged model · the samurai girl exhibit lands here when her .glb arrives',
+  model: 'models/sample.glb',
+  backdrop: 'skullwall',
+};
+const BACKDROPS = {
+  skullwall: 'assets/backdrop-skullwall.jpg',
+  sourceart: 'assets/source-art.jpg',
+  sunset: 'assets/backdrop-sunset.jpg',
+};
+const qs = new URLSearchParams(location.search);
+const errBox = document.getElementById('err');
+const say = m => { document.getElementById('status').textContent = m; };
+const fail = m => { errBox.textContent += m + '\n'; console.error(m); };
+window.addEventListener('error', e => fail('⚠ ' + e.message));
+
+/* ================= tiny mat4 / quat (column-major) ================= */
+const M4 = {
+  ident: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+  mul(a, b) { const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++)
+      o[c*4+r] = a[r]*b[c*4] + a[4+r]*b[c*4+1] + a[8+r]*b[c*4+2] + a[12+r]*b[c*4+3];
+    return o; },
+  persp(fovy, asp, n, f) { const t = 1/Math.tan(fovy/2), d = 1/(n-f);
+    return new Float32Array([t/asp,0,0,0, 0,t,0,0, 0,0,(f+n)*d,-1, 0,0,2*f*n*d,0]); },
+  lookAt(e, c, up) { const z = norm3([e[0]-c[0], e[1]-c[1], e[2]-c[2]]);
+    const x = norm3(cross3(up, z)), y = cross3(z, x);
+    return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+      -dot3(x,e), -dot3(y,e), -dot3(z,e), 1]); },
+  compose(t, q, s) { const [x,y,z,w] = q, x2=x+x, y2=y+y, z2=z+z,
+      xx=x*x2, xy=x*y2, xz=x*z2, yy=y*y2, yz=y*z2, zz=z*z2, wx=w*x2, wy=w*y2, wz=w*z2;
+    return new Float32Array([
+      (1-(yy+zz))*s[0], (xy+wz)*s[0], (xz-wy)*s[0], 0,
+      (xy-wz)*s[1], (1-(xx+zz))*s[1], (yz+wx)*s[1], 0,
+      (xz+wy)*s[2], (yz-wx)*s[2], (1-(xx+yy))*s[2], 0,
+      t[0], t[1], t[2], 1]); },
+};
+function norm3(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; }
+function cross3(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function dot3(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+const Q = {
+  ident: () => [0, 0, 0, 1],
+  mul(a, b) { return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],
+                      a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+                      a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
+                      a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; },
+  slerp(a, b, t) { let d = a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3];
+    if (d < 0) { b = b.map(v => -v); d = -d; }
+    if (d > 0.9995) return norm4(a.map((v, i) => v + (b[i]-v)*t));
+    const th = Math.acos(Math.min(1, d)), s = Math.sin(th);
+    return a.map((v, i) => (v*Math.sin((1-t)*th) + b[i]*Math.sin(t*th)) / s); },
+  euler(x, y, z) { const qx = [Math.sin(x/2),0,0,Math.cos(x/2)], qy = [0,Math.sin(y/2),0,Math.cos(y/2)],
+      qz = [0,0,Math.sin(z/2),Math.cos(z/2)]; return Q.mul(Q.mul(qx, qy), qz); },
+};
+function norm4(v) { const l = Math.hypot(...v) || 1; return v.map(x => x/l); }
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+
+/* ================= GLB parsing ================= */
+const COMP = { 5120: [Int8Array, 1], 5121: [Uint8Array, 1], 5122: [Int16Array, 2],
+               5123: [Uint16Array, 2], 5125: [Uint32Array, 4], 5126: [Float32Array, 4] };
+const NCOMP = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+function parseGLB(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('not a GLB file');
+  const jlen = dv.getUint32(12, true);
+  const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jlen)));
+  let bin = null, off = 20 + jlen;
+  while (off < buf.byteLength) {
+    const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
+    if (type === 0x004E4942) { bin = new Uint8Array(buf, off + 8, len); break; }
+    off += 8 + len;
+  }
+  if (!bin) throw new Error('GLB has no binary chunk');
+  return { gltf, bin };
+}
+function accessorData(gltf, bin, ai) {
+  const a = gltf.accessors[ai], bv = gltf.bufferViews[a.bufferView];
+  const [Arr, esz] = COMP[a.componentType], n = NCOMP[a.type];
+  const stride = bv.byteStride || esz * n;
+  const start = (bv.byteOffset || 0) + (a.byteOffset || 0);
+  if (stride === esz * n)
+    return { array: new Arr(bin.buffer, bin.byteOffset + start, a.count * n), n, comp: a.componentType, count: a.count };
+  const out = new Arr(a.count * n);
+  for (let i = 0; i < a.count; i++)
+    for (let j = 0; j < n; j++)
+      out[i*n+j] = new Arr(bin.buffer, bin.byteOffset + start + i*stride + j*esz, 1)[0];
+  return { array: out, n, comp: a.componentType, count: a.count };
+}
+/* ================= WebGL setup ================= */
+const canvas = document.getElementById('view');
+const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: true });
+if (!gl) fail('WebGL2 is not available in this browser.');
+function shader(type, src) { const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s; }
+function program(vs, fs, attribs) { const p = gl.createProgram();
+  gl.attachShader(p, shader(gl.VERTEX_SHADER, vs)); gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+  Object.entries(attribs || {}).forEach(([name, loc]) => gl.bindAttribLocation(p, loc, name));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p; }
+
+const MAXJ = 96;
+const meshProg = program(`
+  attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute vec2 aUv;
+  attribute vec4 aJoints; attribute vec4 aWeights;
+  uniform mat4 uProj, uView, uModel; uniform mat4 uJoints[${MAXJ}]; uniform int uSkinned;
+  varying vec3 vNor; varying vec3 vCol; varying vec2 vUv; varying vec3 vWorld;
+  void main() {
+    vec3 p = aPos; vec3 n = aNor;
+    if (uSkinned == 1) {
+      mat4 sm = aWeights.x * uJoints[int(aJoints.x)] + aWeights.y * uJoints[int(aJoints.y)]
+              + aWeights.z * uJoints[int(aJoints.z)] + aWeights.w * uJoints[int(aJoints.w)];
+      p = (sm * vec4(p, 1.0)).xyz; n = normalize(mat3(sm) * n);
+      vWorld = p;
+      gl_Position = uProj * uView * vec4(p, 1.0);
+    } else {
+      vec4 wp = uModel * vec4(p, 1.0); vWorld = wp.xyz;
+      n = normalize(mat3(uModel) * n);
+      gl_Position = uProj * uView * wp;
+    }
+    vNor = n; vCol = aCol; vUv = aUv;
+  }`, `
+  precision mediump float;
+  varying vec3 vNor; varying vec3 vCol; varying vec2 vUv; varying vec3 vWorld;
+  uniform sampler2D uTex; uniform int uTexOn; uniform vec4 uBase; uniform vec3 uCam;
+  void main() {
+    vec3 base = uBase.rgb * vCol;
+    if (uTexOn == 1) base *= texture2D(uTex, vUv).rgb;
+    vec3 n = normalize(vNor);
+    vec3 sun = normalize(vec3(0.45, 0.8, 0.55));
+    float dif = max(dot(n, sun), 0.0);
+    vec3 v = normalize(uCam - vWorld);
+    float spec = pow(max(dot(reflect(-sun, n), v), 0.0), 24.0) * 0.18;
+    vec3 col = base * (0.34 + 0.75 * dif) + spec;
+    gl_FragColor = vec4(col, uBase.a);
+  }`, { aPos: 0, aNor: 1, aCol: 2, aUv: 3, aJoints: 4, aWeights: 5 });
+const wallProg = program(`
+  attribute vec3 aPos; attribute vec2 aUv;
+  uniform mat4 uProj, uView, uModel;
+  varying vec2 vUv;
+  void main() { vUv = aUv; gl_Position = uProj * uView * uModel * vec4(aPos, 1.0); }`, `
+  precision mediump float;
+  varying vec2 vUv; uniform sampler2D uTex; uniform int uTexOn;
+  uniform vec4 uColor; uniform float uBright;
+  void main() {
+    vec4 c = uColor;
+    if (uTexOn == 1) c = texture2D(uTex, vUv);
+    float vig = 1.0 - 0.22 * pow(distance(vUv, vec2(0.5, 0.45)), 1.6);
+    gl_FragColor = vec4(c.rgb * uBright * vig, 1.0);
+  }`, { aPos: 0, aUv: 1 });
+const MU = {}; // mesh uniforms
+['uProj','uView','uModel','uJoints','uSkinned','uTex','uTexOn','uBase','uCam']
+  .forEach(n => MU[n] = gl.getUniformLocation(meshProg, n));
+const WU = {};
+['uProj','uView','uModel','uTex','uTexOn','uColor','uBright']
+  .forEach(n => WU[n] = gl.getUniformLocation(wallProg, n));
+const whiteTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, whiteTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255,255,255,255]));
+function loadTex(url) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([40,32,24,255]));
+  const img = new Image(); img.crossOrigin = 'anonymous';
+  img.onload = () => { gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.generateMipmap(gl.TEXTURE_2D); };
+  img.onerror = () => fail('could not load texture: ' + url);
+  img.src = url;
+  return t;
+}
+
+/* ================= model state ================= */
+let MODEL = null; // {gltf, prims:[], nodes:[], skins, clips, rootM, name, stats}
+const pose = new Map(); // nodeIndex -> [rx,ry,rz] radians
+function makeVAO(prim, gltf, bin) {
+  const at = prim.attributes;
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const bind = (name, loc, fallback) => {
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    if (at[name] !== undefined) {
+      const d = accessorData(gltf, bin, at[name]);
+      gl.bufferData(gl.ARRAY_BUFFER, d.array, gl.STATIC_DRAW);
+      const isFloat = d.comp === 5126;
+      gl.vertexAttribPointer(loc, d.n, d.comp, false, 0, 0);
+    } else {
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(fallback), gl.STATIC_DRAW);
+      gl.vertexAttribPointer(loc, fallback.length / (accessorData(gltf, bin, at.POSITION).count), gl.FLOAT, false, 0, 0);
+    }
+    gl.enableVertexAttribArray(loc);
+  };
+  const nVerts = accessorData(gltf, bin, at.POSITION).count;
+  const zeros = n => new Array(nVerts * n).fill(0);
+  bind('POSITION', 0); bind('NORMAL', 1, zeros(3));
+  // COLOR_0 may be vec3/vec4, floats or normalized ints -> normalize to vec3 floats
+  {
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    if (at.COLOR_0 !== undefined) {
+      const d = accessorData(gltf, bin, at.COLOR_0);
+      const out = new Float32Array(nVerts * 3);
+      const scale = d.comp === 5121 ? 1/255 : d.comp === 5123 ? 1/65535 : 1;
+      for (let i = 0; i < nVerts; i++) for (let j = 0; j < 3; j++)
+        out[i*3+j] = d.array[i*d.n+j] * scale;
+      gl.bufferData(gl.ARRAY_BUFFER, out, gl.STATIC_DRAW);
+    } else gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nVerts * 3).fill(1), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(2);
+  }
+  bind('TEXCOORD_0', 3, zeros(2));
+  bind('JOINTS_0', 4, zeros(4)); bind('WEIGHTS_0', 5, zeros(4));
+  let indexCount = 0, indexType = gl.UNSIGNED_INT;
+  if (prim.indices !== undefined) {
+    const d = accessorData(gltf, bin, prim.indices);
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, d.array, gl.STATIC_DRAW);
+    indexCount = d.count; indexType = d.comp === 5123 ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
+  } else indexCount = nVerts;
+  gl.bindVertexArray(null);
+  return { vao, indexCount, indexType, indexed: prim.indices !== undefined };
+}
+async function buildModel(buf, name) {
+  const { gltf, bin } = parseGLB(buf);
+  // textures embedded in the GLB
+  const texes = (gltf.textures || []).map(t => {
+    const img = gltf.images[t.source];
+    const bv = gltf.bufferViews[img.bufferView];
+    const bytes = bin.subarray((bv.byteOffset || 0), (bv.byteOffset || 0) + bv.byteLength);
+    return loadTex(URL.createObjectURL(new Blob([bytes], { type: img.mimeType || 'image/png' })));
+  });
+  const prims = [];
+  gltf.nodes.forEach((node, ni) => {
+    if (node.mesh === undefined) return;
+    gltf.meshes[node.mesh].primitives.forEach(prim => {
+      const mat = gltf.materials && prim.material !== undefined ? gltf.materials[prim.material] : {};
+      const pbr = mat.pbrMetallicRoughness || {};
+      prims.push({ node: ni, skin: node.skin, ...makeVAO(prim, gltf, bin),
+        base: pbr.baseColorFactor || [1, 1, 1, 1],
+        tex: pbr.baseColorTexture !== undefined ? texes[pbr.baseColorTexture.index] : null,
+        double: !!mat.doubleSided });
+    });
+  });
+  // world-space bounds of bind pose -> fit into the box
+  let mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  gltf.meshes.forEach(m => m.primitives.forEach(p => {
+    const a = gltf.accessors[p.attributes.POSITION];
+    for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], a.min[i]); mx[i] = Math.max(mx[i], a.max[i]); }
+  }));
+  const height = Math.max(mx[1] - mn[1], 1e-6);
+  const fit = (BOX.h * 0.86) / height;
+  const cx = (mn[0] + mx[0]) / 2, cz = (mn[2] + mx[2]) / 2;
+  const rootM = M4.mul(M4.compose([0, 0, 0], Q.ident(), [fit, fit, fit]),
+                       M4.compose([-cx, -mn[1], -cz], Q.ident(), [1, 1, 1]));
+  const joints = gltf.skins && gltf.skins[0] ? gltf.skins[0].joints : [];
+  MODEL = { gltf, bin, prims, name, rootM, joints,
+    clips: gltf.animations || [], worlds: new Map(), jointMats: new Float32Array(16 * MAXJ) };
+  pose.clear();
+  buildClipUI(); buildBoneUI();
+  const nVertsTotal = prims.reduce((s, p) => s + p.indexCount, 0);
+  say(`${name} · ${prims.length} mesh part(s) · ${joints.length} bones · ${MODEL.clips.length} clip(s)`);
+}
+function nodeLocal(gltf, ni, animTRS) {
+  const n = gltf.nodes[ni];
+  let t = n.translation || [0, 0, 0], r = n.rotation || [0, 0, 0, 1], s = n.scale || [1, 1, 1];
+  const a = animTRS && animTRS.get(ni);
+  if (a) { if (a.translation) t = a.translation; if (a.rotation) r = a.rotation; if (a.scale) s = a.scale; }
+  const p = pose.get(ni);
+  if (p) r = Q.mul(r, Q.euler(p[0], p[1], p[2]));
+  return M4.compose(t, r, s);
+}
+function updateWorlds(animTRS) {
+  const { gltf } = MODEL; MODEL.worlds.clear();
+  const walk = (ni, parent) => {
+    const w = M4.mul(parent, nodeLocal(gltf, ni, animTRS));
+    MODEL.worlds.set(ni, w);
+    (gltf.nodes[ni].children || []).forEach(c => walk(c, w));
+  };
+  (gltf.scenes[gltf.scene || 0].nodes || []).forEach(r => walk(r, MODEL.rootM));
+  if (gltf.skins && gltf.skins[0]) {
+    const skin = gltf.skins[0];
+    const ibm = accessorData(gltf, MODEL.bin, skin.inverseBindMatrices).array;
+    skin.joints.forEach((jn, i) => {
+      const jm = M4.mul(MODEL.worlds.get(jn), new Float32Array(ibm.subarray(i * 16, i * 16 + 16)));
+      MODEL.jointMats.set(jm, i * 16);
+    });
+  }
+}
+function sampleClip(clip, time) {
+  const { gltf, bin } = MODEL; const out = new Map();
+  clip.channels.forEach(ch => {
+    const smp = clip.samplers[ch.sampler];
+    const times = accessorData(gltf, bin, smp.input).array;
+    const vals = accessorData(gltf, bin, smp.output);
+    let i = 0;
+    while (i < times.length - 2 && times[i + 1] < time) i++;
+    const t0 = times[i], t1 = times[Math.min(i + 1, times.length - 1)];
+    const f = t1 > t0 ? Math.min(1, Math.max(0, (time - t0) / (t1 - t0))) : 0;
+    const n = vals.n, a = vals.array.subarray(i * n, i * n + n), b = vals.array.subarray((i + 1) * n, (i + 1) * n + n);
+    const v = ch.target.path === 'rotation' ? Q.slerp([...a], [...b], f) : lerp3([...a], [...b], f);
+    const node = ch.target.node;
+    if (!out.has(node)) out.set(node, {});
+    out.get(node)[ch.target.path] = v;
+  });
+  return out;
+}
+function clipDuration(clip) {
+  let d = 0;
+  clip.samplers.forEach(s => { const a = MODEL.gltf.accessors[s.input]; d = Math.max(d, a.max[0]); });
+  return d;
+}
+
+/* ================= the box ================= */
+const BOX = { w: 2.6, h: 2.6, d: 1.6 };
+function quadVAO() { // unit quad in XY, z=0, uv 0..1
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -0.5,-0.5,0, 0,0,  0.5,-0.5,0, 1,0,  0.5,0.5,0, 1,1,  -0.5,0.5,0, 0,1]), gl.STATIC_DRAW);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0); gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12); gl.enableVertexAttribArray(1);
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2, 0, 2, 3]), gl.STATIC_DRAW);
+  gl.bindVertexArray(null); return vao;
+}
+const QUAD = quadVAO();
+function drawQuad(progU, model, tex, color, bright) {
+  gl.uniformMatrix4fv(progU.uModel, false, model);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex || whiteTex);
+  gl.uniform1i(progU.uTex, 0); gl.uniform1i(progU.uTexOn, tex ? 1 : 0);
+  if (progU.uColor) gl.uniform4fv(progU.uColor, color);
+  if (progU.uBright) gl.uniform1f(progU.uBright, bright);
+  gl.bindVertexArray(QUAD); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0); gl.bindVertexArray(null);
+}
+const rotX = a => { const c = Math.cos(a), s = Math.sin(a);
+  return new Float32Array([1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]); };
+const rotY = a => { const c = Math.cos(a), s = Math.sin(a);
+  return new Float32Array([c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]); };
+function drawBox(proj, view, bd, camPos) {
+  gl.useProgram(wallProg);
+  gl.uniformMatrix4fv(WU.uProj, false, proj); gl.uniformMatrix4fv(WU.uView, false, view);
+  const { w, h, d } = BOX, wallCol = [0.32, 0.26, 0.19, 1];
+  const wallTex = bd.wrap ? bd.tex : null;
+  // floor (scale is applied in world axes after the rotation: [x, 1, z])
+  drawQuad(WU, M4.mul(M4.compose([0, 0, 0], Q.ident(), [w, 1, d]), rotX(-Math.PI/2)),
+    null, [0.23, 0.18, 0.13, 1], 1);
+  // back wall = the backdrop
+  drawQuad(WU, M4.compose([0, h/2, -d/2], Q.ident(), [w, h, 1]), bd.tex, bd.color, bd.bright);
+  // side walls (after rotY the quad spans world Z and Y: scale [1, h, d])
+  const lw = M4.mul(M4.compose([-w/2, h/2, 0], Q.ident(), [1, h, d]), rotY(Math.PI/2));
+  const rw = M4.mul(M4.compose([w/2, h/2, 0], Q.ident(), [1, h, d]), rotY(-Math.PI/2));
+  drawQuad(WU, lw, wallTex, wallCol, bd.wrap ? bd.bright : 1);
+  drawQuad(WU, rw, wallTex, wallCol, bd.wrap ? bd.bright : 1);
+  // frame beams along the open front + top edges
+  gl.useProgram(meshProg);
+  gl.uniformMatrix4fv(MU.uProj, false, proj); gl.uniformMatrix4fv(MU.uView, false, view);
+  gl.uniform3fv(MU.uCam, camPos || [0, 2, 6]);
+  gl.uniform1i(MU.uSkinned, 0); gl.uniform1i(MU.uTexOn, 0);
+  gl.uniform4fv(MU.uBase, [0.16, 0.11, 0.07, 1]);
+  drawBeam([0, h, 0], [w + 0.12, 0.09, 0.09]); drawBeam([0, 0.02, 0], [w + 0.12, 0.09, 0.09]);
+  drawBeam([-w/2, h/2, 0], [0.09, h, 0.09]); drawBeam([w/2, h/2, 0], [0.09, h, 0.09]);
+  drawBeam([0, h, -d/2], [w + 0.12, 0.09, 0.09]);
+  drawBeam([-w/2, h/2, -d/2], [0.09, h, 0.09]); drawBeam([w/2, h/2, -d/2], [0.09, h, 0.09]);
+}
+let BEAM = null;
+function drawBeam(center, size) {
+  if (!BEAM) { // unit cube, positions+normals+white colors, no skinning
+    const P = [], N = [], C = [], I = [];
+    const faces = [ [[0,0,1],[[-.5,-.5,.5],[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5]]],
+      [[0,0,-1],[[.5,-.5,-.5],[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5]]],
+      [[1,0,0],[[.5,-.5,.5],[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5]]],
+      [[-1,0,0],[[-.5,-.5,-.5],[-.5,-.5,.5],[-.5,.5,.5],[-.5,.5,-.5]]],
+      [[0,1,0],[[-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5],[-.5,.5,-.5]]],
+      [[0,-1,0],[[-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]]] ];
+    faces.forEach(([n, cs]) => { const base = P.length / 3;
+      cs.forEach(c => { P.push(...c); N.push(...n); C.push(1, 1, 1); });
+      I.push(base, base+1, base+2, base, base+2, base+3); });
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const mk = (loc, arr, n) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW);
+      gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(loc); };
+    mk(0, P, 3); mk(1, N, 3); mk(2, C, 3);
+    [3, 4, 5].forEach(loc => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(P.length * 4 / 3), gl.STATIC_DRAW);
+      gl.vertexAttribPointer(loc, loc === 3 ? 2 : 4, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(loc); });
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(I), gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    BEAM = { vao, count: I.length };
+  }
+  gl.uniformMatrix4fv(MU.uModel, false, M4.compose(center, Q.ident(), size));
+  gl.bindVertexArray(BEAM.vao); gl.drawElements(gl.TRIANGLES, BEAM.count, gl.UNSIGNED_SHORT, 0);
+  gl.bindVertexArray(null);
+}
+function drawModel(proj, view, camPos) {
+  if (!MODEL) return;
+  gl.useProgram(meshProg);
+  gl.uniformMatrix4fv(MU.uProj, false, proj); gl.uniformMatrix4fv(MU.uView, false, view);
+  gl.uniform3fv(MU.uCam, camPos);
+  gl.activeTexture(gl.TEXTURE0); gl.uniform1i(MU.uTex, 0);
+  for (const p of MODEL.prims) {
+    const skinned = p.skin !== undefined && MODEL.gltf.skins && MODEL.gltf.skins[p.skin];
+    if (skinned) {
+      // joint matrices for THIS prim's skin
+      const skin = MODEL.gltf.skins[p.skin];
+      const ibm = accessorData(MODEL.gltf, MODEL.bin, skin.inverseBindMatrices).array;
+      const jm = new Float32Array(16 * MAXJ);
+      skin.joints.forEach((jn, i) => {
+        if (i >= MAXJ) return;
+        jm.set(M4.mul(MODEL.worlds.get(jn), new Float32Array(ibm.subarray(i*16, i*16+16))), i * 16);
+      });
+      gl.uniformMatrix4fv(MU.uJoints, false, jm);
+      gl.uniform1i(MU.uSkinned, 1);
+      gl.uniformMatrix4fv(MU.uModel, false, M4.ident());
+    } else {
+      gl.uniform1i(MU.uSkinned, 0);
+      gl.uniformMatrix4fv(MU.uModel, false, MODEL.worlds.get(p.node) || M4.ident());
+    }
+    gl.uniform4fv(MU.uBase, p.base);
+    gl.bindTexture(gl.TEXTURE_2D, p.tex || whiteTex);
+    gl.uniform1i(MU.uTexOn, p.tex ? 1 : 0);
+    if (p.double) gl.disable(gl.CULL_FACE); else gl.enable(gl.CULL_FACE);
+    gl.bindVertexArray(p.vao);
+    if (p.indexed) gl.drawElements(gl.TRIANGLES, p.indexCount, p.indexType, 0);
+    else gl.drawArrays(gl.TRIANGLES, 0, p.indexCount);
+    gl.bindVertexArray(null);
+  }
+}
+/* ================= camera + input ================= */
+const cam = { theta: 0.55, phi: 1.12, radius: 5.2, tx: 0, ty: 1.15, tz: 0 };
+function camPos() { const sp = Math.sin(cam.phi), r = cam.radius;
+  return [cam.tx + r * sp * Math.sin(cam.theta), cam.ty + r * Math.cos(cam.phi),
+          cam.tz + r * sp * Math.cos(cam.theta)]; }
+function resetCam() { cam.theta = 0.55; cam.phi = 1.12; cam.radius = Math.max(BOX.w, BOX.h) * 2.0;
+  cam.tx = 0; cam.ty = BOX.h * 0.44; cam.tz = 0; }
+let dragging = false, lastX = 0, lastY = 0, spinDir = 1;
+canvas.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => { if (!dragging) return;
+  cam.theta -= (e.clientX - lastX) * 0.006; cam.phi -= (e.clientY - lastY) * 0.006;
+  cam.theta = Math.min(1.25, Math.max(-1.25, cam.theta)); // stay in front of the box
+  cam.phi = Math.min(1.52, Math.max(0.12, cam.phi)); lastX = e.clientX; lastY = e.clientY; });
+canvas.addEventListener('pointerup', () => dragging = false);
+canvas.addEventListener('wheel', e => { e.preventDefault();
+  cam.radius = Math.min(14, Math.max(1.4, cam.radius * (1 + Math.sign(e.deltaY) * 0.09))); }, { passive: false });
+
+/* ================= backdrop state ================= */
+const bdState = { tex: null, color: [0.23, 0.17, 0.11, 1], bright: 1, wrap: false };
+function hexRGB(hx) { const n = parseInt(hx.slice(1), 16);
+  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255, 1]; }
+function setBackdrop(kind, url) {
+  if (kind === 'color') { bdState.tex = null; bdState.color = hexRGB(document.getElementById('bdColor').value); }
+  else bdState.tex = loadTex(url || BACKDROPS[kind]);
+}
+
+/* ================= UI wiring ================= */
+const $ = id => document.getElementById(id);
+let clipIdx = -1, clipTime = 0, playing = true;
+function buildClipUI() {
+  const sel = $('clipSel'); sel.innerHTML = '<option value="-1">— no clip —</option>';
+  MODEL.clips.forEach((c, i) => { const o = document.createElement('option');
+    o.value = i; o.textContent = c.name || ('clip ' + (i + 1)); sel.appendChild(o); });
+  clipIdx = MODEL.clips.length ? 0 : -1; sel.value = clipIdx; clipTime = 0; playing = true;
+  $('playBtn').textContent = '⏸ Pause';
+  const want = qs.get('clip');
+  if (want) { const i = MODEL.clips.findIndex(c => c.name === want);
+    if (i >= 0) { clipIdx = i; sel.value = i; } }
+  if (qs.get('t') !== null && clipIdx >= 0) { clipTime = parseFloat(qs.get('t')) || 0; playing = false;
+    $('playBtn').textContent = '▶ Play'; }
+}
+function buildBoneUI() {
+  const sel = $('boneSel'); sel.innerHTML = '';
+  const names = MODEL.joints.length ? MODEL.joints : MODEL.gltf.nodes.map((_, i) => i);
+  names.forEach(jn => { const o = document.createElement('option');
+    o.value = jn; o.textContent = MODEL.gltf.nodes[jn].name || ('node ' + jn); sel.appendChild(o); });
+  syncPoseSliders();
+}
+function syncPoseSliders() {
+  const jn = parseInt($('boneSel').value || '0');
+  const p = pose.get(jn) || [0, 0, 0];
+  document.querySelectorAll('.poseAxis').forEach(s => s.value = Math.round(p[s.dataset.axis] * 180 / Math.PI));
+}
+$('boneSel').addEventListener('change', syncPoseSliders);
+document.querySelectorAll('.poseAxis').forEach(s => s.addEventListener('input', () => {
+  const jn = parseInt($('boneSel').value || '0');
+  const p = pose.get(jn) || [0, 0, 0];
+  p[s.dataset.axis] = parseFloat(s.value) * Math.PI / 180;
+  pose.set(jn, p);
+}));
+$('clipSel').addEventListener('change', () => { clipIdx = parseInt($('clipSel').value); clipTime = 0; });
+$('playBtn').addEventListener('click', () => { playing = !playing;
+  $('playBtn').textContent = playing ? '⏸ Pause' : '▶ Play'; });
+$('clipTime').addEventListener('input', () => { if (clipIdx >= 0 && MODEL) {
+  clipTime = parseFloat($('clipTime').value) * clipDuration(MODEL.clips[clipIdx]); playing = false;
+  $('playBtn').textContent = '▶ Play'; } });
+$('poseReset').addEventListener('click', () => { pose.clear(); syncPoseSliders(); });
+$('bdSel').addEventListener('change', () => setBackdrop($('bdSel').value));
+$('bdColor').addEventListener('input', () => { if ($('bdSel').value === 'color') setBackdrop('color'); });
+$('bdBright').addEventListener('input', () => bdState.bright = parseFloat($('bdBright').value));
+$('bdWrap').addEventListener('change', () => bdState.wrap = $('bdWrap').checked);
+$('boxW').addEventListener('input', () => { BOX.w = parseFloat($('boxW').value); refit(); });
+$('boxH').addEventListener('input', () => { BOX.h = parseFloat($('boxH').value); refit(); });
+$('boxD').addEventListener('input', () => { BOX.d = parseFloat($('boxD').value); });
+function refit() { if (MODEL && MODEL.buf) { const buf = MODEL.buf, keep = MODEL.name;
+  buildModel(buf, keep).then(() => { MODEL.buf = buf; }).catch(e => fail(e.message)); } }
+$('camBtn').addEventListener('click', resetCam);
+$('snapBtn').addEventListener('click', () => {
+  canvas.toBlob(b => { const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = 'dbox.png'; a.click(); }); });
+async function loadModelFile(fileOrBuf, name) {
+  const buf = fileOrBuf instanceof ArrayBuffer ? fileOrBuf : await fileOrBuf.arrayBuffer();
+  await buildModel(buf, name); MODEL.buf = buf;
+}
+$('modelFile').addEventListener('change', () => { const f = $('modelFile').files[0];
+  if (f) loadModelFile(f, f.name).catch(e => fail('model failed: ' + e.message)); });
+$('bdFile').addEventListener('change', () => { const f = $('bdFile').files[0];
+  if (f) { bdState.tex = loadTex(URL.createObjectURL(f)); } });
+window.addEventListener('dragover', e => { e.preventDefault(); $('drop').style.display = 'grid'; });
+window.addEventListener('dragleave', () => $('drop').style.display = 'none');
+window.addEventListener('drop', e => { e.preventDefault(); $('drop').style.display = 'none';
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  if (/\.glb$/i.test(f.name)) loadModelFile(f, f.name).catch(err => fail('model failed: ' + err.message));
+  else if (f.type.startsWith('image/')) bdState.tex = loadTex(URL.createObjectURL(f));
+  else fail('drop a .glb model or an image for the backdrop'); });
+
+/* ================= main loop ================= */
+function resize() { const d = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.floor(innerWidth * d), h = Math.floor(innerHeight * d);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; } }
+let lastT = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  resize(); gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
+  gl.clearColor(0.043, 0.039, 0.035, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if ($('spin').checked && !dragging) { // turntable: sway within the front arc, never behind the box
+    cam.theta += dt * 0.35 * spinDir;
+    if (cam.theta > 1.05) { cam.theta = 1.05; spinDir = -1; }
+    if (cam.theta < -1.05) { cam.theta = -1.05; spinDir = 1; }
+  }
+  const proj = M4.persp(0.72, canvas.width / canvas.height, 0.05, 100);
+  const pos = camPos(), view = M4.lookAt(pos, [cam.tx, cam.ty, cam.tz], [0, 1, 0]);
+  drawBox(proj, view, bdState, pos);
+  if (MODEL) {
+    let animTRS = null;
+    if (clipIdx >= 0 && MODEL.clips[clipIdx]) {
+      const clip = MODEL.clips[clipIdx], dur = clipDuration(clip) || 1;
+      if (playing) clipTime = (clipTime + dt) % dur;
+      $('clipTime').value = clipTime / dur;
+      animTRS = sampleClip(clip, clipTime);
+    }
+    updateWorlds(animTRS);
+    drawModel(proj, view, pos);
+  }
+}
+/* ================= boot ================= */
+(async () => {
+  document.title = 'Dbox';
+  $('plaqueTitle').textContent = qs.get('title') || CONFIG.title;
+  $('plaqueCredit').textContent = CONFIG.credit;
+  const bdKind = qs.get('backdrop') || CONFIG.backdrop;
+  if (BACKDROPS[bdKind]) { $('bdSel').value = bdKind; setBackdrop(bdKind); }
+  else setBackdrop(CONFIG.backdrop);
+  resetCam();
+  requestAnimationFrame(frame);
+  try {
+    const url = qs.get('model') || CONFIG.model;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('fetch ' + url + ' -> ' + resp.status);
+    await loadModelFile(await resp.arrayBuffer(), url.split('/').pop());
+  } catch (e) { fail('no model loaded (' + e.message + ') — drop a .glb to begin'); say('box is empty — drop a .glb anywhere on the page'); }
+})();
+</script>
+</body>
+</html>
