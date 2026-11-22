@@ -45,6 +45,8 @@ paused), `backdrop` (`skullwall` | `sourceart` | `sunset` | `color`),
 
 Dbox was built to present a rigged 3D model of the "Samurai Girl — Waltz"
 artwork (AI art by @ai.art_hana): image → Hunyuan mesh → RigAnything rig →
-this box. The mannequin holds her place until the rigged `.glb` arrives;
-swapping it in is a one-line change in the `CONFIG` block at the top of
-`index.html`.
+this box. Until the rigged `.glb` arrives, she stands in the box as a flat
+cutout (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py`
+from `assets/samurai-cutout.png`, the source art with its background
+removed) with a gentle `sway` clip. Swapping in the real rigged model is a
+one-line change in the `CONFIG` block at the top of `index.html`.

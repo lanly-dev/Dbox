@@ -96,9 +96,9 @@
 'use strict';
 /* ================= config ================= */
 const CONFIG = {
-  title: 'Training Mannequin',
-  credit: 'sample rigged model · the samurai girl exhibit lands here when her .glb arrives',
-  model: 'models/sample.glb',
+  title: 'Samurai Girl',
+  credit: 'art © @ai.art_hana · flat cutout stand-in — her rigged 3D self takes this stage when the mesh is ready',
+  model: 'models/samurai-cutout.glb',
   backdrop: 'skullwall',
 };
 const BACKDROPS = {
@@ -224,9 +224,11 @@ const meshProg = program(`
   precision mediump float;
   varying vec3 vNor; varying vec3 vCol; varying vec2 vUv; varying vec3 vWorld;
   uniform sampler2D uTex; uniform int uTexOn; uniform vec4 uBase; uniform vec3 uCam;
+  uniform float uCutoff;
   void main() {
     vec3 base = uBase.rgb * vCol;
-    if (uTexOn == 1) base *= texture2D(uTex, vUv).rgb;
+    if (uTexOn == 1) { vec4 t = texture2D(uTex, vUv);
+      if (t.a < uCutoff) discard; base *= t.rgb; }
     vec3 n = normalize(vNor);
     vec3 sun = normalize(vec3(0.45, 0.8, 0.55));
     float dif = max(dot(n, sun), 0.0);
@@ -250,7 +252,7 @@ const wallProg = program(`
     gl_FragColor = vec4(c.rgb * uBright * vig, 1.0);
   }`, { aPos: 0, aUv: 1 });
 const MU = {}; // mesh uniforms
-['uProj','uView','uModel','uJoints','uSkinned','uTex','uTexOn','uBase','uCam']
+['uProj','uView','uModel','uJoints','uSkinned','uTex','uTexOn','uBase','uCam','uCutoff']
   .forEach(n => MU[n] = gl.getUniformLocation(meshProg, n));
 const WU = {};
 ['uProj','uView','uModel','uTex','uTexOn','uColor','uBright']
@@ -339,6 +341,7 @@ async function buildModel(buf, name) {
       prims.push({ node: ni, skin: node.skin, ...makeVAO(prim, gltf, bin),
         base: pbr.baseColorFactor || [1, 1, 1, 1],
         tex: pbr.baseColorTexture !== undefined ? texes[pbr.baseColorTexture.index] : null,
+        cutoff: mat.alphaMode === 'MASK' ? (mat.alphaCutoff !== undefined ? mat.alphaCutoff : 0.5) : 0,
         double: !!mat.doubleSided });
     });
   });
@@ -518,6 +521,7 @@ function drawModel(proj, view, camPos) {
       gl.uniformMatrix4fv(MU.uModel, false, MODEL.worlds.get(p.node) || M4.ident());
     }
     gl.uniform4fv(MU.uBase, p.base);
+    gl.uniform1f(MU.uCutoff, p.cutoff || 0);
     gl.bindTexture(gl.TEXTURE_2D, p.tex || whiteTex);
     gl.uniform1i(MU.uTexOn, p.tex ? 1 : 0);
     if (p.double) gl.disable(gl.CULL_FACE); else gl.enable(gl.CULL_FACE);
