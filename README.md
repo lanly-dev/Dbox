@@ -17,6 +17,8 @@ raw WebGL2, no libraries, no build step.
   it the backdrop
 - Orbit camera that stays in front of the box, gentle turntable sway,
   box width/height/depth sliders, PNG snapshot button
+- **Mobile friendly** — the control panel becomes a collapsible bottom sheet,
+  one finger orbits, pinch zooms, and the framing adapts to portrait screens
 
 ## Files
 
