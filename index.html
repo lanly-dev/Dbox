@@ -347,8 +347,10 @@ async function buildModel(buf, name) {
   });
   // world-space bounds -> fit into the box. Unskinned prims are drawn through
   // their node's world transform, so measure their bounds there (Hunyuan
-  // exports carry a Z-up rotation on the mesh node); skinned prims are drawn
-  // in bind-pose model space, so raw local bounds are the right measure there.
+  // exports carry a Z-up rotation on the mesh node); skinned prims are
+  // measured in bind-pose skinned space, because some exports keep the raw
+  // positions in a different frame than the skeleton (the inverse bind
+  // matrices carry the conversion).
   const staticWorld = new Map();
   const walkStatic = (ni, parent) => {
     const n = gltf.nodes[ni];
@@ -368,7 +370,31 @@ async function buildModel(buf, name) {
     if (node.mesh === undefined) return;
     gltf.meshes[node.mesh].primitives.forEach(p => {
       const a = gltf.accessors[p.attributes.POSITION];
-      if (node.skin !== undefined) {
+      if (node.skin !== undefined && p.attributes.JOINTS_0 !== undefined && p.attributes.WEIGHTS_0 !== undefined) {
+        const skin = gltf.skins[node.skin];
+        const ibmD = accessorData(gltf, bin, skin.inverseBindMatrices);
+        const jm = skin.joints.map((jn, ji) => M4.mul(staticWorld.get(jn) || M4.ident(),
+          ibmD.array.subarray(ji * 16, ji * 16 + 16)));
+        const posD = accessorData(gltf, bin, p.attributes.POSITION);
+        const jD = accessorData(gltf, bin, p.attributes.JOINTS_0);
+        const wD = accessorData(gltf, bin, p.attributes.WEIGHTS_0);
+        const wScale = wD.comp === 5121 ? 1 / 255 : wD.comp === 5123 ? 1 / 65535 : 1;
+        const stride = Math.max(1, Math.floor(posD.count / 20000));
+        for (let v = 0; v < posD.count; v += stride) {
+          const px = posD.array[v * 3], py = posD.array[v * 3 + 1], pz = posD.array[v * 3 + 2];
+          let x = 0, y = 0, z = 0;
+          for (let k = 0; k < 4; k++) {
+            const w = wD.array[v * 4 + k] * wScale;
+            if (!w) continue;
+            const m = jm[jD.array[v * 4 + k]];
+            x += w * (m[0] * px + m[4] * py + m[8] * pz + m[12]);
+            y += w * (m[1] * px + m[5] * py + m[9] * pz + m[13]);
+            z += w * (m[2] * px + m[6] * py + m[10] * pz + m[14]);
+          }
+          if (x < mn[0]) mn[0] = x; if (y < mn[1]) mn[1] = y; if (z < mn[2]) mn[2] = z;
+          if (x > mx[0]) mx[0] = x; if (y > mx[1]) mx[1] = y; if (z > mx[2]) mx[2] = z;
+        }
+      } else if (node.skin !== undefined) {
         for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], a.min[i]); mx[i] = Math.max(mx[i], a.max[i]); }
       } else {
         const w = staticWorld.get(ni) || M4.ident();
