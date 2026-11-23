@@ -45,13 +45,13 @@ paused), `backdrop` (`skullwall` | `sourceart` | `sunset` | `color`),
 
 Dbox was built to present a rigged 3D model of the "Samurai Girl — Waltz"
 artwork (AI art by @ai.art_hana). She now stands in the box as a real rigged
-model (`models/samurai-girl.glb`): the source art was redrawn in a T-pose,
-turned into a 49,998-face mesh by Hunyuan3D, and auto-rigged (Mixamo
-skeleton, 52 joints) in Tripo Studio — a T-pose rigs cleanly, where the
-original spin pose did not. Tripo's free-plan exports carry the skin but
-drop the animation clips, so the `idle` and `slash` clips were authored
-directly into the GLB by `tools/add_clips_tpose.py`, and the embedded
-textures were shrunk for the web by `tools/shrink_textures.py` (35 MB →
-3.4 MB). Her earlier flat-cutout standee is still in the repo
+model (`models/samurai-girl.glb`): her turnaround sheet was redrawn in a
+T-pose, turned into a 49,532-face mesh by Hunyuan3D, and auto-rigged
+(Mixamo skeleton, 55 joints) in Tripo Studio — a T-pose rigs cleanly,
+where the original spin pose did not. Tripo's free-plan exports carry the
+skin but drop the animation clips, so the `idle` and `slash` clips were
+authored directly into the GLB by `tools/add_clips_tpose.py`, and the
+embedded textures were shrunk for the web by `tools/shrink_textures.py`
+(33 MB → 3.5 MB). Her earlier flat-cutout standee is still in the repo
 (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py` from
 `assets/samurai-cutout.png`) — view it with `?model=models/samurai-cutout.glb`.
