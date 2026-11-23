@@ -44,9 +44,11 @@ paused), `backdrop` (`skullwall` | `sourceart` | `sunset` | `color`),
 ## The exhibit
 
 Dbox was built to present a rigged 3D model of the "Samurai Girl — Waltz"
-artwork (AI art by @ai.art_hana): image → Hunyuan mesh → RigAnything rig →
-this box. Until the rigged `.glb` arrives, she stands in the box as a flat
-cutout (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py`
-from `assets/samurai-cutout.png`, the source art with its background
-removed) with a gentle `sway` clip. Swapping in the real rigged model is a
-one-line change in the `CONFIG` block at the top of `index.html`.
+artwork (AI art by @ai.art_hana). She now stands in the box as a real rigged
+model (`models/samurai-girl.glb`): generated and auto-rigged (Mixamo
+skeleton, 28 joints) in Tripo Studio from the full-body source art.
+Tripo's free-plan exports carry the skin but drop the animation clips, so
+the `idle` and `slash` clips were authored directly into the GLB by
+`tools/add_clips.py`. Her earlier flat-cutout standee is still in the repo
+(`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py` from
+`assets/samurai-cutout.png`) — view it with `?model=models/samurai-cutout.glb`.
