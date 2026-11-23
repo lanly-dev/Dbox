@@ -345,12 +345,40 @@ async function buildModel(buf, name) {
         double: !!mat.doubleSided });
     });
   });
-  // world-space bounds of bind pose -> fit into the box
+  // world-space bounds -> fit into the box. Unskinned prims are drawn through
+  // their node's world transform, so measure their bounds there (Hunyuan
+  // exports carry a Z-up rotation on the mesh node); skinned prims are drawn
+  // in bind-pose model space, so raw local bounds are the right measure there.
+  const staticWorld = new Map();
+  const walkStatic = (ni, parent) => {
+    const n = gltf.nodes[ni];
+    let local;
+    if (n.matrix) { const d = decomposeTRS(n.matrix); local = M4.compose(d.t, d.r, d.s); }
+    else local = M4.compose(n.translation || [0, 0, 0], n.rotation || [0, 0, 0, 1], n.scale || [1, 1, 1]);
+    const w = M4.mul(parent, local);
+    staticWorld.set(ni, w);
+    (n.children || []).forEach(c => walkStatic(c, w));
+  };
+  (gltf.scenes[gltf.scene || 0].nodes || []).forEach(r => walkStatic(r, M4.ident()));
+  const xformPt = (m, x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12],
+                                   m[1] * x + m[5] * y + m[9] * z + m[13],
+                                   m[2] * x + m[6] * y + m[10] * z + m[14]];
   let mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
-  gltf.meshes.forEach(m => m.primitives.forEach(p => {
-    const a = gltf.accessors[p.attributes.POSITION];
-    for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], a.min[i]); mx[i] = Math.max(mx[i], a.max[i]); }
-  }));
+  gltf.nodes.forEach((node, ni) => {
+    if (node.mesh === undefined) return;
+    gltf.meshes[node.mesh].primitives.forEach(p => {
+      const a = gltf.accessors[p.attributes.POSITION];
+      if (node.skin !== undefined) {
+        for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], a.min[i]); mx[i] = Math.max(mx[i], a.max[i]); }
+      } else {
+        const w = staticWorld.get(ni) || M4.ident();
+        for (const px of [a.min[0], a.max[0]]) for (const py of [a.min[1], a.max[1]]) for (const pz of [a.min[2], a.max[2]]) {
+          const q = xformPt(w, px, py, pz);
+          for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], q[i]); mx[i] = Math.max(mx[i], q[i]); }
+        }
+      }
+    });
+  });
   const height = Math.max(mx[1] - mn[1], 1e-6);
   const fit = (BOX.h * 0.86) / height;
   const cx = (mn[0] + mx[0]) / 2, cz = (mn[2] + mx[2]) / 2;
