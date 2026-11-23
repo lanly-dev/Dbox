@@ -90,6 +90,9 @@ def slash_keys():
         },
     }
 
+stand_keys = None  # variants (add_clips_tpose) may supply a stand clip
+
+
 def main():
     src, dst = sys.argv[1], sys.argv[2]
     data = open(src, 'rb').read()
@@ -158,8 +161,9 @@ def main():
                                  'target': {'node': ni, 'path': path}})
         return {'name': name, 'samplers': samplers, 'channels': channels}
 
-    gltf['animations'] = [build_clip('idle', idle_keys()),
-                          build_clip('slash', slash_keys())]
+    clip_defs = [('stand', stand_keys), ('idle', idle_keys),
+                 ('slash', slash_keys)]
+    gltf['animations'] = [build_clip(n, fn()) for n, fn in clip_defs if fn]
     gltf['buffers'][0]['byteLength'] = len(bin_data)
 
     js = json.dumps(gltf, separators=(',', ':')).encode()

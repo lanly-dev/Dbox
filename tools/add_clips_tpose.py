@@ -56,8 +56,32 @@ def slash_keys():
         },
     }
 
+def stand_keys():
+    # The turnaround sheet's front view: arms hanging straight down at her
+    # sides, forearms straight, head level — a held standing pose with only
+    # a whisper of breath so she does not read as frozen.
+    ts = [0.0, 1.0, 2.0, 3.0, 4.0]
+    def s(amp, phase=0.0):
+        return [amp * math.sin(2 * math.pi * t / 4.0 + phase) for t in ts]
+    STAND_L, STAND_R = -1.42, 1.42
+    return {
+        'rot': {
+            'mixamorig:Spine':  [(t, (v, 0, 0)) for t, v in zip(ts, s(0.008))],
+            'mixamorig:Spine2': [(t, (v, 0, 0)) for t, v in zip(ts, s(0.005))],
+            'mixamorig:Head':   [(t, (v, 0, 0)) for t, v in zip(ts, s(0.005, 1.2))],
+            'mixamorig:LeftArm':  [(t, (STAND_L + v, 0, 0)) for t, v in zip(ts, s(0.006, 0.5))],
+            'mixamorig:RightArm': [(t, (STAND_R + v, 0, 0)) for t, v in zip(ts, s(0.006, 0.5))],
+            'mixamorig:LeftForeArm':  [(t, (-0.06, 0, 0)) for t in ts],
+            'mixamorig:RightForeArm': [(t, (0.06, 0, 0)) for t in ts],
+        },
+        'trans': {
+            'mixamorig:Hips': [(t, (0, v, 0)) for t, v in zip(ts, s(0.0015))],
+        },
+    }
+
 add_clips.idle_keys = idle_keys
 add_clips.slash_keys = slash_keys
+add_clips.stand_keys = stand_keys
 
 if __name__ == '__main__':
     add_clips.main()
