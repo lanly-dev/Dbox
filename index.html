@@ -100,7 +100,13 @@ const CONFIG = {
   credit: 'art © @ai.art_hana · turnaround sheet → Hunyuan mesh, Tripo rig — pose her, play stand / idle / slash',
   model: 'models/samurai-girl.glb',
   backdrop: 'skullwall',
+  prop: 'models/katana.glb',       // separate model pinned to a bone
+  propBone: 'mixamorig:RightHand',
+  propClips: ['stand', 'slash'],   // clips where the prop is in her hand
 };
+// prop grip: offset in the hand bone's local frame (tuned on screenshots).
+// The katana GLB is baked grip-at-origin, blade along +Y.
+const PROP_GRIP = { t: [0, 0.03, 0], e: [-1.570, -0.007, -0.272] };
 const BACKDROPS = {
   skullwall: 'assets/backdrop-skullwall.jpg',
   sourceart: 'assets/source-art.jpg',
@@ -612,6 +618,26 @@ function drawModel(proj, view, camPos) {
     else gl.drawArrays(gl.TRIANGLES, 0, p.indexCount);
     gl.bindVertexArray(null);
   }
+  // the prop (e.g. katana) pinned to its bone, only in the listed clips
+  if (PROP && clipIdx >= 0 && MODEL.clips[clipIdx] &&
+      CONFIG.propClips.includes(MODEL.clips[clipIdx].name)) {
+    const hw = MODEL.worlds.get(PROP.bone);
+    if (hw) {
+      gl.uniform1i(MU.uSkinned, 0);
+      gl.uniformMatrix4fv(MU.uModel, false, M4.mul(hw, PROP.gripM));
+      for (const p of PROP.prims) {
+        gl.uniform4fv(MU.uBase, p.base);
+        gl.uniform1f(MU.uCutoff, p.cutoff || 0);
+        gl.bindTexture(gl.TEXTURE_2D, p.tex || whiteTex);
+        gl.uniform1i(MU.uTexOn, p.tex ? 1 : 0);
+        if (p.double) gl.disable(gl.CULL_FACE); else gl.enable(gl.CULL_FACE);
+        gl.bindVertexArray(p.vao);
+        if (p.indexed) gl.drawElements(gl.TRIANGLES, p.indexCount, p.indexType, 0);
+        else gl.drawArrays(gl.TRIANGLES, 0, p.indexCount);
+        gl.bindVertexArray(null);
+      }
+    }
+  }
 }
 /* ================= camera + input ================= */
 const cam = { theta: 0.55, phi: 1.12, radius: 5.2, tx: 0, ty: 1.15, tz: 0 };
@@ -713,9 +739,47 @@ if (matchMedia('(max-width: 720px)').matches) $('panel').classList.add('closed')
 $('snapBtn').addEventListener('click', () => {
   canvas.toBlob(b => { const a = document.createElement('a');
     a.href = URL.createObjectURL(b); a.download = 'dbox.png'; a.click(); }); });
+let PROP = null; // {prims, bone, gripM} — a separate model pinned to a bone
+async function buildProp(buf) {
+  const { gltf, bin } = parseGLB(buf);
+  const texes = (gltf.textures || []).map(t => {
+    const img = gltf.images[t.source];
+    const bv = gltf.bufferViews[img.bufferView];
+    const bytes = bin.subarray((bv.byteOffset || 0), (bv.byteOffset || 0) + bv.byteLength);
+    return loadTex(URL.createObjectURL(new Blob([bytes], { type: img.mimeType || 'image/png' })));
+  });
+  const prims = [];
+  gltf.nodes.forEach((node, ni) => {
+    if (node.mesh === undefined) return;
+    gltf.meshes[node.mesh].primitives.forEach(prim => {
+      const mat = gltf.materials && prim.material !== undefined ? gltf.materials[prim.material] : {};
+      const pbr = mat.pbrMetallicRoughness || {};
+      prims.push({ node: ni, skin: undefined, ...makeVAO(prim, gltf, bin),
+        base: pbr.baseColorFactor || [1, 1, 1, 1],
+        tex: pbr.baseColorTexture !== undefined ? texes[pbr.baseColorTexture.index] : null,
+        cutoff: mat.alphaMode === 'MASK' ? (mat.alphaCutoff !== undefined ? mat.alphaCutoff : 0.5) : 0,
+        double: !!mat.doubleSided });
+    });
+  });
+  return prims;
+}
+async function maybeLoadProp() {
+  PROP = null;
+  if (!CONFIG.prop || !MODEL) return;
+  const bone = MODEL.gltf.nodes.findIndex(n => n.name === CONFIG.propBone);
+  if (bone < 0) return; // this model has no such bone — no prop
+  try {
+    const resp = await fetch(CONFIG.prop);
+    if (!resp.ok) return;
+    const prims = await buildProp(await resp.arrayBuffer());
+    PROP = { prims, bone,
+      gripM: M4.compose(PROP_GRIP.t, Q.euler(PROP_GRIP.e[0], PROP_GRIP.e[1], PROP_GRIP.e[2]), [1, 1, 1]) };
+  } catch (_) { /* prop is optional decoration */ }
+}
 async function loadModelFile(fileOrBuf, name) {
   const buf = fileOrBuf instanceof ArrayBuffer ? fileOrBuf : await fileOrBuf.arrayBuffer();
   await buildModel(buf, name); MODEL.buf = buf;
+  maybeLoadProp();
 }
 $('modelFile').addEventListener('change', () => { const f = $('modelFile').files[0];
   if (f) loadModelFile(f, f.name).catch(e => fail('model failed: ' + e.message)); });

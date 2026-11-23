@@ -54,6 +54,10 @@ artwork's wide stance with both arms raised in an overhead guard — the
 default clip), `idle` and `slash` clips were
 authored directly into the GLB by `tools/add_clips_tpose.py`, and the
 embedded textures were shrunk for the web by `tools/shrink_textures.py`
-(33 MB → 3.5 MB). Her earlier flat-cutout standee is still in the repo
+(33 MB → 3.5 MB). Her katana is a separate model (`models/katana.glb`,
+generated on its own from the models sheet, baked grip-at-origin by
+`tools/bake_katana_prop.py`): the viewer pins it to her right-hand bone
+during the `stand` and `slash` clips, so she actually holds the drawn
+blade; the sheathed pair stays at her waist. Her earlier flat-cutout standee is still in the repo
 (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py` from
 `assets/samurai-cutout.png`) — view it with `?model=models/samurai-cutout.glb`.
