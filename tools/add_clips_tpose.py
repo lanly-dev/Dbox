@@ -57,25 +57,42 @@ def slash_keys():
     }
 
 def stand_keys():
-    # The turnaround sheet's front view: arms hanging straight down at her
-    # sides, forearms straight, head level — a held standing pose with only
-    # a whisper of breath so she does not read as frozen.
-    ts = [0.0, 1.0, 2.0, 3.0, 4.0]
+    # The original art (slide 2): a wide planted stance, both arms raised
+    # overhead with elbows bent, hands together above her head in a high
+    # guard, chin down. Held pose — constant keys, a whisper of breath on
+    # the spine only. (Her katana stays sheathed in the mesh, so the guard
+    # is empty-handed, same as the slash clip.)
+    ts = [0.0, 2.0, 4.0]
     def s(amp, phase=0.0):
         return [amp * math.sin(2 * math.pi * t / 4.0 + phase) for t in ts]
-    STAND_L, STAND_R = -1.42, 1.42
+    def held(v):
+        return [(t, v) for t in ts]
     return {
         'rot': {
-            'mixamorig:Spine':  [(t, (v, 0, 0)) for t, v in zip(ts, s(0.008))],
-            'mixamorig:Spine2': [(t, (v, 0, 0)) for t, v in zip(ts, s(0.005))],
-            'mixamorig:Head':   [(t, (v, 0, 0)) for t, v in zip(ts, s(0.005, 1.2))],
-            'mixamorig:LeftArm':  [(t, (STAND_L + v, 0, 0)) for t, v in zip(ts, s(0.006, 0.5))],
-            'mixamorig:RightArm': [(t, (STAND_R + v, 0, 0)) for t, v in zip(ts, s(0.006, 0.5))],
-            'mixamorig:LeftForeArm':  [(t, (-0.06, 0, 0)) for t in ts],
-            'mixamorig:RightForeArm': [(t, (0.06, 0, 0)) for t in ts],
+            'mixamorig:Spine':  [(t, (v, 0.05, 0)) for t, v in zip(ts, s(0.008))],
+            'mixamorig:Spine2': [(t, (v, 0.03, 0)) for t, v in zip(ts, s(0.005))],
+            'mixamorig:Head':   held((-0.08, 0, 0)),
+            'mixamorig:LeftArm':  held((2.20, 0, 0)),
+            'mixamorig:RightArm': held((-2.20, 0, 0)),
+            'mixamorig:LeftForeArm':  held((-1.15, 0, 0)),
+            'mixamorig:RightForeArm': held((1.15, 0, 0)),
+            # fingers curled as if gripping the (sheathed, so absent) katana
+            **{f'mixamorig:{side}Hand{finger}{j}': held((0.5, 0, 0))
+               for side in ('Left', 'Right')
+               for finger in ('Index', 'Middle', 'Ring', 'Pinky')
+               for j in (1, 2, 3)},
+            **{f'mixamorig:{side}HandThumb{j}': held((0.3, 0, 0))
+               for side in ('Left', 'Right') for j in (1, 2, 3)},
+            # Leg splay is the UpLeg X axis on this rig (probed: Z is the
+            # sagittal swing, X +/-1.0 does the splits). Feet counter-tilt
+            # so the sandals stay flat.
+            'mixamorig:LeftUpLeg':  held((0.38, 0, 0)),
+            'mixamorig:RightUpLeg': held((-0.38, 0, 0)),
+            'mixamorig:LeftFoot':  held((-0.38, 0, 0)),
+            'mixamorig:RightFoot': held((0.38, 0, 0)),
         },
         'trans': {
-            'mixamorig:Hips': [(t, (0, v, 0)) for t, v in zip(ts, s(0.0015))],
+            'mixamorig:Hips': [(t, (0, -0.035 + v, 0)) for t, v in zip(ts, s(0.0015))],
         },
     }
 

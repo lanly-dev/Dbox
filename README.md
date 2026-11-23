@@ -49,8 +49,9 @@ model (`models/samurai-girl.glb`): her turnaround sheet was redrawn in a
 T-pose, turned into a 49,532-face mesh by Hunyuan3D, and auto-rigged
 (Mixamo skeleton, 55 joints) in Tripo Studio — a T-pose rigs cleanly,
 where the original spin pose did not. Tripo's free-plan exports carry the
-skin but drop the animation clips, so the `stand` (her turnaround-sheet
-front pose, and the default clip), `idle` and `slash` clips were
+skin but drop the animation clips, so the `stand` (the original
+artwork's wide stance with both arms raised in an overhead guard — the
+default clip), `idle` and `slash` clips were
 authored directly into the GLB by `tools/add_clips_tpose.py`, and the
 embedded textures were shrunk for the web by `tools/shrink_textures.py`
 (33 MB → 3.5 MB). Her earlier flat-cutout standee is still in the repo
