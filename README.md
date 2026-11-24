@@ -58,6 +58,10 @@ embedded textures were shrunk for the web by `tools/shrink_textures.py`
 generated on its own from the models sheet, baked grip-at-origin by
 `tools/bake_katana_prop.py`): the viewer pins it to her right-hand bone
 during the `stand` and `slash` clips, so she actually holds the drawn
-blade; the sheathed pair stays at her waist. Her earlier flat-cutout standee is still in the repo
+blade; the sheathed pair stays at her waist. Her hakama, sleeves and
+hair have spring physics: each vertex carries a (cloth, hair, sleeve)
+weight classified from the bind pose, and damped springs chase the
+hips', head's and forearms' motion, so fabric and hair lag, overshoot
+and settle when she moves (secondary motion — not a cloth solver). Her earlier flat-cutout standee is still in the repo
 (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py` from
 `assets/samurai-cutout.png`) — view it with `?model=models/samurai-cutout.glb`.
