@@ -555,7 +555,11 @@ async function buildModel(buf, name) {
     });
   });
   const height = Math.max(mx[1] - mn[1], 1e-6);
-  const fit = (BOX.h * 0.86) / height;
+  const width = Math.max(mx[0] - mn[0], 1e-6);
+  const depth = Math.max(mx[2] - mn[2], 1e-6);
+  // fit inside the box on every axis — wide flat parts (a hair sheet) must
+  // not blow up just because they are thin
+  const fit = Math.min((BOX.h * 0.86) / height, (BOX.w * 0.9) / width, (BOX.d * 1.7) / depth);
   const cx = (mn[0] + mx[0]) / 2, cz = (mn[2] + mx[2]) / 2;
   const rootM = M4.mul(M4.compose([0, 0, 0], Q.ident(), [fit, fit, fit]),
                        M4.compose([-cx, -mn[1], -cz], Q.ident(), [1, 1, 1]));
