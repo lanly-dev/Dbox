@@ -69,6 +69,13 @@ standalone cloth and hair parts (hakama, top, sleeves, hair) sway on
 their own too: each vertex carries a hang weight — garments are pinned
 at the top and swing at the hem under a soft spring chasing a breeze
 (kicked when you orbit the camera), and the flat hair sheet ripples
-along its length instead. Her earlier flat-cutout standee is still in the repo
+along its length instead. The parts also exist assembled into one standing
+figure (`models/stand-parts.glb`, built by `tools/build_stand_parts.py`):
+hair, wrap top, sleeves, hakama, platform sandals and the katana, each
+scaled and placed at its wearing position against her bind pose — a
+dress-form stand of the whole outfit, viewable with
+`?model=models/stand-parts.glb`. The parts are unskinned, so the stand
+holds a neutral standing arrangement rather than her raised-guard pose.
+Her earlier flat-cutout standee is still in the repo
 (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py` from
 `assets/samurai-cutout.png`) — view it with `?model=models/samurai-cutout.glb`.
