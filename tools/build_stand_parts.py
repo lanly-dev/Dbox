@@ -189,13 +189,13 @@ def main():
     Path(f'{MODELS}/.body-tmp.glb').unlink()
 
     hair = load_part('hair')
-    jobs += [(p, 'hair') for p in place(hair, rot('z', -90), 0.58, (0.5, 1, 0.5), (-0.02, 1.00, -0.125))]
+    jobs += [(p, 'hair') for p in place(hair, rot('z', -90), 0.58, (0.5, 1, 0.5), (-0.02, 1.00, -0.10))]
 
     hakama = load_part('hakama')
     jobs += [(p, 'hakama') for p in place(hakama, np.eye(3), 0.58, (0.5, 1, 0.5), (0, 0.62, -0.01))]
 
     top = load_part('top')
-    jobs += [(p, 'top') for p in place(top, np.eye(3), 0.28, (0.5, 0.5, 0.5), (0, 0.745, 0.003))]
+    jobs += [(p, 'top') for p in place(top, np.eye(3), 0.26, (0.5, 0.5, 0.5), (0, 0.765, 0.003))]
 
     sleeves = load_part('sleeves')
     panels = split_shells(sleeves[0], lambda s: len(s['tris']) >= 40)
@@ -206,13 +206,13 @@ def main():
         jobs += [(p, 'sleeveR') for p in place([right], np.eye(3), 0.60, (0.5, 1, 0.5), (0.315, 0.82, -0.01))]
     else:
         print(f'WARN: sleeves split into {len(panels)} panels, placing whole')
-        jobs += [(p, 'sleeves') for p in place(sleeves, np.eye(3), 0.55, (0.5, 1, 0.5), (0, 0.84, -0.10))]
+        jobs += [(p, 'sleeves') for p in place(sleeves, np.eye(3), 0.38, (0.5, 1, 0.5), (0, 0.82, -0.12))]
 
     sandals = load_part('sandals')
     jobs += [(p, 'sandals') for p in place(sandals, np.eye(3), 0.21, (0.5, 0, 0.5), (0, 0.0, 0.03))]
 
     katana = load_part('katana')
-    jobs += [(p, 'katana') for p in place(katana, rot('z', -38) @ rot('x', -12), 1.0, (0.5, 0, 0.5), (0.02, 0.52, 0.15))]
+    jobs += [(p, 'katana') for p in place(katana, rot('z', -33) @ rot('x', -12), 1.0, (0.5, 0, 0.5), (0.02, 0.46, 0.15))]
 
     # ---- merge ----
     buf = bytearray()
