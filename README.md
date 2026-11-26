@@ -62,6 +62,11 @@ blade; the sheathed pair stays at her waist. Her hakama, sleeves and
 hair have spring physics: each vertex carries a (cloth, hair, sleeve)
 weight classified from the bind pose, and damped springs chase the
 hips', head's and forearms' motion, so fabric and hair lag, overshoot
-and settle when she moves (secondary motion — not a cloth solver). Her earlier flat-cutout standee is still in the repo
+and settle when she moves (secondary motion — not a cloth solver). The
+standalone cloth and hair parts (hakama, top, sleeves, hair) sway on
+their own too: each vertex carries a hang weight — garments are pinned
+at the top and swing at the hem under a soft spring chasing a breeze
+(kicked when you orbit the camera), and the flat hair sheet ripples
+along its length instead. Her earlier flat-cutout standee is still in the repo
 (`models/samurai-cutout.glb`, built by `tools/make_cutout_glb.py` from
 `assets/samurai-cutout.png`) — view it with `?model=models/samurai-cutout.glb`.

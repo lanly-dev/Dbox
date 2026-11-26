@@ -209,9 +209,10 @@ function program(vs, fs, attribs) { const p = gl.createProgram();
 const MAXJ = 96;
 const meshProg = program(`
   attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute vec2 aUv;
-  attribute vec4 aJoints; attribute vec4 aWeights; attribute vec3 aFlex;
+  attribute vec4 aJoints; attribute vec4 aWeights; attribute vec3 aFlex; attribute float aHang;
   uniform mat4 uProj, uView, uModel; uniform mat4 uJoints[${MAXJ}]; uniform int uSkinned;
   uniform vec3 uClothOff, uHairOff, uSleeveOff;
+  uniform vec3 uSway; uniform int uSwayMode; uniform float uTime;
   varying vec3 vNor; varying vec3 vCol; varying vec2 vUv; varying vec3 vWorld; varying vec3 vFlex;
   void main() {
     vec3 p = aPos; vec3 n = aNor;
@@ -224,7 +225,12 @@ const meshProg = program(`
       vWorld = p;
       gl_Position = uProj * uView * vec4(p, 1.0);
     } else {
-      vec4 wp = uModel * vec4(p, 1.0); vWorld = wp.xyz;
+      vec4 wp = uModel * vec4(p, 1.0);
+      // standalone cloth/hair parts: hang-weight sway (1 = hanging garment,
+      // top pinned, hem swings; 2 = flat sheet, a ripple runs along it)
+      if (uSwayMode == 1) wp.xyz += uSway * aHang;
+      else if (uSwayMode == 2) wp.y += sin(aHang * 9.0 - uTime * 2.3) * 0.02 * sin(3.14159 * aHang);
+      vWorld = wp.xyz;
       n = normalize(mat3(uModel) * n);
       gl_Position = uProj * uView * wp;
     }
@@ -246,7 +252,7 @@ const meshProg = program(`
     float spec = pow(max(dot(reflect(-sun, n), v), 0.0), 24.0) * 0.18;
     vec3 col = base * (0.34 + 0.75 * dif) + spec;
     gl_FragColor = vec4(col, uBase.a);
-  }`, { aPos: 0, aNor: 1, aCol: 2, aUv: 3, aJoints: 4, aWeights: 5, aFlex: 6 });
+  }`, { aPos: 0, aNor: 1, aCol: 2, aUv: 3, aJoints: 4, aWeights: 5, aFlex: 6, aHang: 7 });
 const wallProg = program(`
   attribute vec3 aPos; attribute vec2 aUv;
   uniform mat4 uProj, uView, uModel;
@@ -262,7 +268,7 @@ const wallProg = program(`
     gl_FragColor = vec4(c.rgb * uBright * vig, 1.0);
   }`, { aPos: 0, aUv: 1 });
 const MU = {}; // mesh uniforms
-['uProj','uView','uModel','uJoints','uSkinned','uTex','uTexOn','uBase','uCam','uCutoff','uClothOff','uHairOff','uSleeveOff','uFlexViz']
+['uProj','uView','uModel','uJoints','uSkinned','uTex','uTexOn','uBase','uCam','uCutoff','uClothOff','uHairOff','uSleeveOff','uFlexViz','uSway','uSwayMode','uTime']
   .forEach(n => MU[n] = gl.getUniformLocation(meshProg, n));
 const WU = {};
 ['uProj','uView','uModel','uTex','uTexOn','uColor','uBright']
@@ -359,8 +365,30 @@ function stepFlex(dt) {
     }
   }
 }
+/* ---- standalone-part sway: a soft spring chasing a breeze, kicked by
+   camera moves, so the cloth/hair parts feel hung rather than frozen ---- */
+const swayPhys = { off: [0, 0, 0], vel: [0, 0, 0], prevTheta: null, prevPhi: null };
+function resetSway() { swayPhys.off = [0, 0, 0]; swayPhys.vel = [0, 0, 0];
+  swayPhys.prevTheta = null; swayPhys.prevPhi = null; }
+function stepSway(dt, now) {
+  if (!MODEL || !MODEL.swayMode) return;
+  const t = now / 1000;
+  const bx = Math.sin(t * 0.45) * 0.6 + Math.sin(t * 0.83 + 1.3) * 0.4;
+  const bz = Math.cos(t * 0.37 + 0.5) * 0.55 + Math.sin(t * 0.59 + 2.1) * 0.35;
+  if (swayPhys.prevTheta !== null && dt > 0) { // orbiting drags the cloth behind
+    const kick = (d, s) => Math.max(-0.25, Math.min(0.25, -d * s));
+    swayPhys.vel[0] += kick(cam.theta - swayPhys.prevTheta, 2.0);
+    swayPhys.vel[2] += kick(cam.phi - swayPhys.prevPhi, 1.2);
+  }
+  swayPhys.prevTheta = cam.theta; swayPhys.prevPhi = cam.phi;
+  const AMP = 0.05, tgt = [bx * AMP, 0, bz * AMP * 0.7], k = 7, c = 2.4;
+  for (let i = 0; i < 3; i++) {
+    swayPhys.vel[i] += (k * (tgt[i] - swayPhys.off[i]) - c * swayPhys.vel[i]) * dt;
+    swayPhys.off[i] += swayPhys.vel[i] * dt;
+  }
+}
 const pose = new Map(); // nodeIndex -> [rx,ry,rz] radians
-function makeVAO(prim, gltf, bin, flex) {
+function makeVAO(prim, gltf, bin, flex, hang) {
   const at = prim.attributes;
   const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
   const bind = (name, loc, fallback) => {
@@ -398,6 +426,11 @@ function makeVAO(prim, gltf, bin, flex) {
     const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
     gl.bufferData(gl.ARRAY_BUFFER, flex || new Float32Array(nVerts * 3), gl.STATIC_DRAW);
     gl.vertexAttribPointer(6, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(6);
+  }
+  { // aHang: per-vertex hang weight for standalone-part sway, 0 = pinned
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, hang || new Float32Array(nVerts), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(7, 1, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(7);
   }
   let indexCount = 0, indexType = gl.UNSIGNED_INT;
   if (prim.indices !== undefined) {
@@ -491,6 +524,50 @@ async function buildModel(buf, name) {
     }
     return out;
   }
+  // Standalone cloth/hair parts get hang weights for the sway spring: a
+  // hanging garment (tall) is pinned at the top and swings at the hem; a
+  // flat sheet (the hair) ripples along its long axis instead.
+  const SWAY_PARTS = new Set(['hair.glb', 'hakama.glb', 'top.glb', 'sleeves.glb']);
+  let swayMode = 0, swayBnd = null;
+  if (SWAY_PARTS.has(name) && !gltf.skins) {
+    const mn2 = [1e9, 1e9, 1e9], mx2 = [-1e9, -1e9, -1e9];
+    gltf.nodes.forEach((node, ni) => {
+      if (node.mesh === undefined) return;
+      const w = staticWorld.get(ni) || M4.ident();
+      gltf.meshes[node.mesh].primitives.forEach(p => {
+        const a = gltf.accessors[p.attributes.POSITION];
+        for (const px of [a.min[0], a.max[0]]) for (const py of [a.min[1], a.max[1]]) for (const pz of [a.min[2], a.max[2]]) {
+          const q = [w[0] * px + w[4] * py + w[8] * pz + w[12],
+                     w[1] * px + w[5] * py + w[9] * pz + w[13],
+                     w[2] * px + w[6] * py + w[10] * pz + w[14]];
+          for (let i = 0; i < 3; i++) { mn2[i] = Math.min(mn2[i], q[i]); mx2[i] = Math.max(mx2[i], q[i]); }
+        }
+      });
+    });
+    const hE = mx2[1] - mn2[1], wE = mx2[0] - mn2[0], dE = mx2[2] - mn2[2];
+    swayMode = hE < 0.45 * Math.max(wE, dE) ? 2 : 1;
+    swayBnd = { mn: mn2, mx: mx2 };
+  }
+  function primHang(node, prim) {
+    const w = staticWorld.get(node) || M4.ident();
+    const posD = accessorData(gltf, bin, prim.attributes.POSITION);
+    const out = new Float32Array(posD.count);
+    const hgt = Math.max(swayBnd.mx[1] - swayBnd.mn[1], 1e-6);
+    const axis = (swayBnd.mx[0] - swayBnd.mn[0]) >= (swayBnd.mx[2] - swayBnd.mn[2]) ? 0 : 2;
+    const aMin = swayBnd.mn[axis], aExt = Math.max(swayBnd.mx[axis] - swayBnd.mn[axis], 1e-6);
+    for (let v = 0; v < posD.count; v++) {
+      const px = posD.array[v * 3], py = posD.array[v * 3 + 1], pz = posD.array[v * 3 + 2];
+      const q = [w[0] * px + w[4] * py + w[8] * pz + w[12],
+                 w[1] * px + w[5] * py + w[9] * pz + w[13],
+                 w[2] * px + w[6] * py + w[10] * pz + w[14]];
+      if (swayMode === 1) {
+        let h = clamp01((swayBnd.mx[1] - q[1]) / hgt);
+        h = clamp01((h - 0.10) / 0.90); // top band stays pinned
+        out[v] = Math.pow(h, 1.25);
+      } else out[v] = clamp01((q[axis] - aMin) / aExt);
+    }
+    return out;
+  }
   const prims = [];
   gltf.nodes.forEach((node, ni) => {
     if (node.mesh === undefined) return;
@@ -498,7 +575,8 @@ async function buildModel(buf, name) {
       const mat = gltf.materials && prim.material !== undefined ? gltf.materials[prim.material] : {};
       const pbr = mat.pbrMetallicRoughness || {};
       prims.push({ node: ni, skin: node.skin,
-        ...makeVAO(prim, gltf, bin, (node.skin !== undefined && prim.attributes.JOINTS_0 !== undefined) ? primFlex(node, prim) : undefined),
+        ...makeVAO(prim, gltf, bin, (node.skin !== undefined && prim.attributes.JOINTS_0 !== undefined) ? primFlex(node, prim) : undefined,
+          (swayMode && node.skin === undefined) ? primHang(ni, prim) : undefined),
         base: pbr.baseColorFactor || [1, 1, 1, 1],
         tex: pbr.baseColorTexture !== undefined ? texes[pbr.baseColorTexture.index] : null,
         cutoff: mat.alphaMode === 'MASK' ? (mat.alphaCutoff !== undefined ? mat.alphaCutoff : 0.5) : 0,
@@ -564,12 +642,12 @@ async function buildModel(buf, name) {
   const rootM = M4.mul(M4.compose([0, 0, 0], Q.ident(), [fit, fit, fit]),
                        M4.compose([-cx, -mn[1], -cz], Q.ident(), [1, 1, 1]));
   const joints = gltf.skins && gltf.skins[0] ? gltf.skins[0].joints : [];
-  MODEL = { gltf, bin, prims, name, rootM, joints,
+  MODEL = { gltf, bin, prims, name, rootM, joints, swayMode,
     clips: gltf.animations || [], worlds: new Map(), jointMats: new Float32Array(16 * MAXJ),
     anchorHips: gltf.nodes.findIndex(n => bareName(n.name) === 'Hips'), anchorHead: headJointNode,
     anchorForeL: gltf.nodes.findIndex(n => bareName(n.name) === 'LeftForeArm'),
     anchorForeR: gltf.nodes.findIndex(n => bareName(n.name) === 'RightForeArm') };
-  pose.clear(); matCache.clear(); resetFlex();
+  pose.clear(); matCache.clear(); resetFlex(); resetSway();
   buildClipUI(); buildBoneUI();
   const nVertsTotal = prims.reduce((s, p) => s + p.indexCount, 0);
   say(`${name} · ${prims.length} mesh part(s) · ${joints.length} bones · ${MODEL.clips.length} clip(s)`);
@@ -698,6 +776,7 @@ function drawBox(proj, view, bd, camPos) {
   gl.uniformMatrix4fv(MU.uProj, false, proj); gl.uniformMatrix4fv(MU.uView, false, view);
   gl.uniform3fv(MU.uCam, camPos || [0, 2, 6]);
   gl.uniform1i(MU.uSkinned, 0); gl.uniform1i(MU.uTexOn, 0);
+  gl.uniform1i(MU.uSwayMode, 0);
   gl.uniform4fv(MU.uBase, [0.16, 0.11, 0.07, 1]);
   drawBeam([0, h, 0], [w + 0.12, 0.09, 0.09]); drawBeam([0, 0.02, 0], [w + 0.12, 0.09, 0.09]);
   drawBeam([-w/2, h/2, 0], [0.09, h, 0.09]); drawBeam([w/2, h/2, 0], [0.09, h, 0.09]);
@@ -742,6 +821,9 @@ function drawModel(proj, view, camPos) {
   gl.uniform3fv(MU.uClothOff, flexPhys.cloth.off);
   gl.uniform3fv(MU.uHairOff, flexPhys.hair.off);
   gl.uniform3fv(MU.uSleeveOff, flexPhys.sleeve.off);
+  gl.uniform3fv(MU.uSway, swayPhys.off);
+  gl.uniform1i(MU.uSwayMode, MODEL.swayMode || 0);
+  gl.uniform1f(MU.uTime, performance.now() / 1000);
   gl.uniform1i(MU.uFlexViz, qs.get('flexviz') ? 1 : 0);
   gl.activeTexture(gl.TEXTURE0); gl.uniform1i(MU.uTex, 0);
   for (const p of MODEL.prims) {
@@ -979,6 +1061,7 @@ function frame(now) {
     }
     updateWorlds(animTRS);
     stepFlex(dt);
+    stepSway(dt, now);
     drawModel(proj, view, pos);
   }
 }
