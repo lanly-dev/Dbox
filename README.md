@@ -58,7 +58,9 @@ embedded textures were shrunk for the web by `tools/shrink_textures.py`
 generated on its own from the models sheet, baked grip-at-origin by
 `tools/bake_katana_prop.py`): the viewer pins it to her right-hand bone
 during the `stand` and `slash` clips, so she actually holds the drawn
-blade; the sheathed pair stays at her waist. Her hakama, sleeves and
+blade; the sheathed pair she originally wore was later removed from
+her model shell-by-shell (scabbards, hilts and guards), so the drawn
+prop is the only sword she carries now. Her hakama, sleeves and
 hair have spring physics: each vertex carries a (cloth, hair, sleeve)
 weight classified from the bind pose, and damped springs chase the
 hips', head's and forearms' motion, so fabric and hair lag, overshoot
