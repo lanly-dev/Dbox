@@ -72,8 +72,9 @@ at the top and swing at the hem under a soft spring chasing a breeze
 along its length instead. The parts also exist assembled into one standing
 figure (`models/stand-parts.glb`, built by `tools/build_stand_parts.py`):
 hair, wrap top, sleeves, hakama, platform sandals and the katana, each
-scaled and placed at its wearing position against her bind pose — a
-dress-form stand of the whole outfit, viewable with
+scaled and placed at its wearing position against her bind pose, worn
+on her own body — her model with the fused clothing shells stripped
+off and the idle pose baked in (`tools/build_body.py`) — viewable with
 `?model=models/stand-parts.glb`. The parts are unskinned, so the stand
 holds a neutral standing arrangement rather than her raised-guard pose.
 Her earlier flat-cutout standee is still in the repo

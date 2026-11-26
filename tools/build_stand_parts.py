@@ -180,6 +180,14 @@ def main():
 
     jobs = []  # (prims, name)
 
+    # the body underneath: girl model with clothing shells stripped, idle
+    # pose baked in (built by the sibling tool); already in girl space.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from build_body import build_body
+    build_body(f'{MODELS}/samurai-girl.glb', f'{MODELS}/.body-tmp.glb')
+    jobs += [(p, 'body') for p in load_part('.body-tmp')]
+    Path(f'{MODELS}/.body-tmp.glb').unlink()
+
     hair = load_part('hair')
     jobs += [(p, 'hair') for p in place(hair, rot('z', -90), 0.58, (0.5, 1, 0.5), (-0.02, 1.00, -0.125))]
 
@@ -187,7 +195,7 @@ def main():
     jobs += [(p, 'hakama') for p in place(hakama, np.eye(3), 0.58, (0.5, 1, 0.5), (0, 0.62, -0.01))]
 
     top = load_part('top')
-    jobs += [(p, 'top') for p in place(top, np.eye(3), 0.28, (0.5, 0.5, 0.5), (0, 0.73, -0.005))]
+    jobs += [(p, 'top') for p in place(top, np.eye(3), 0.28, (0.5, 0.5, 0.5), (0, 0.745, 0.003))]
 
     sleeves = load_part('sleeves')
     panels = split_shells(sleeves[0], lambda s: len(s['tris']) >= 40)
